@@ -1,0 +1,7 @@
+{
+  "package": "@mediapipe/tasks-vision",
+  "version": "0.10.32",
+  "license": "Apache-2.0",
+  "model_sha256": "490e9ea734313e0de10fa0cd9e3c6133e36ea4db2b7a49bde9ef019f72796b8e",
+  "npm_tarball_sha256": "b362a2b56aafcce7857047c25dc8fd69612fd8e75018e264717d24290e7815c1"
+}

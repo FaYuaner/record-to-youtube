@@ -1,0 +1,23 @@
+# Media stages only. FFmpeg / ffprobe are OS packages, not pip dependencies.
+# faster-whisper contains the Silero ONNX VAD asset; do not install torch/silero-vad.
+faster-whisper==1.2.1
+onnxruntime>=1.20,<2
+numpy>=1.26,<3
+opencc-python-reimplemented==0.1.7
+
+# Set DAIGUI_WHISPER_MODEL to a preinstalled CTranslate2 model path, or base/small.
+# DAIGUI_ALLOW_MODEL_DOWNLOAD=0 (default) means requests never download a model.
+# DAIGUI_MODEL_CACHE can designate an existing Hugging Face model cache.
+# DAIGUI_FFMPEG_THREADS=1 (maximum 2); ASR always uses CPU int8 with one thread.
+# DAIGUI_ASR_LANGUAGE=zh (default); empty string enables language autodetection.
+#
+# Metadata: set DAIGUI_TEXT_PROVIDER=openai, gemini or anthropic; DAIGUI_TEXT_MODEL and
+# DAIGUI_TEXT_API_KEY in protected server environment. Never put keys in UI/files.
+# DAIGUI_TEXT_BASE_URL defaults to https://api.openai.com/v1 for openai, or
+# https://generativelanguage.googleapis.com/v1beta for gemini; override for an
+# authorized compatible provider. Configuration alone does not make a network call.
+# Anthropic-compatible MiniMax: DAIGUI_TEXT_BASE_URL=https://api.minimaxi.com/anthropic
+# DAIGUI_TEXT_MODEL=MiniMax-M3; key goes in DAIGUI_TEXT_API_KEY.
+# METADATA_PROVIDER/MODEL/API_KEY/BASE_URL are accepted aliases.
+# API requests use the backend ManagedProxySession for on-demand outbound access.
+# No cloud transcription / images / subtitles / music / publishing are performed.
