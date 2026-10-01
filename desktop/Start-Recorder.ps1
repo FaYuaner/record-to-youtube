@@ -31,7 +31,7 @@ public static class DaiguiRecorderWindow {
         GetWindowText(window, title, title.Capacity);
         GetClassName(window, className, className.Capacity);
         return className.ToString().StartsWith("Chrome_WidgetWin_", StringComparison.Ordinal)
-            && title.ToString().IndexOf("Daigui Recorder", StringComparison.OrdinalIgnoreCase) >= 0;
+            && title.ToString().IndexOf("Record to YouTube", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 }
 '@
@@ -41,7 +41,7 @@ function Show-RecorderNotice([string] $Text, [bool] $IsError = $false) {
     try {
         $notice.Icon = if ($IsError) { [System.Drawing.SystemIcons]::Warning } else { [System.Drawing.SystemIcons]::Information }
         $notice.Visible = $true
-        $notice.BalloonTipTitle = 'Daigui Recorder'
+        $notice.BalloonTipTitle = 'Record to YouTube'
         $notice.BalloonTipText = $Text
         $notice.ShowBalloonTip(5000)
         Start-Sleep -Seconds 5

@@ -1,4 +1,4 @@
-# Daigui Recorder · 今日录制
+# 今日录制 · Record to YouTube
 
 在 Windows 电脑上录制视频，保存原片，并自动上传到自己的 YouTube 频道。默认直接上传原片；需要剪辑时，可接入自己的工具或 Codex Skill。云服务器是可选项。
 
@@ -21,8 +21,8 @@ Record locally, upload to your own YouTube channel, and optionally edit with you
 需要 Windows、Google Chrome 和 Python 3.11 或 3.12。直接录制不需要 FFmpeg、AI 服务或远程服务器。
 
 ```powershell
-git clone https://github.com/almustafadaigui-creator/daigui-recorder-local.git
-cd daigui-recorder-local
+git clone https://github.com/almustafadaigui-creator/record-to-youtube.git
+cd record-to-youtube
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop/Install-Local.ps1
 ```
 

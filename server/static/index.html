@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#173e35"><meta name="description" content="录下想说的话，整理成片，发布到你的 YouTube 频道。">
-  <title>Daigui Recorder — 把想说的话留下来</title>
-  <link rel="stylesheet" href="./style.css?v=ccbbf3f80586"><script src="./locales.js?v=eb4b30c8e699" defer></script><script src="./i18n.js?v=a9749597333e" defer></script><script src="./app.js?v=4f897263a18f" defer></script>
+  <title>今日录制 · Record to YouTube — 把想说的话留下来</title>
+  <link rel="stylesheet" href="./style.css?v=ccbbf3f80586"><script src="./locales.js?v=0561094fb28f" defer></script><script src="./i18n.js?v=a9749597333e" defer></script><script src="./app.js?v=e416bef1cc9c" defer></script>
 </head>
 <body>
-  <header class="topbar"><a class="brand" href="./" aria-label="Daigui Recorder 首页"><span class="brand-mark" aria-hidden="true">d<span></span></span><span>Daigui <b>Recorder</b></span></a><nav aria-label="主选单"><a href="./about.html">关于</a><span class="connection"><i id="connectionDot"></i><span id="connectionText">正在连线</span></span><select id="languageSelect" class="language-select" aria-label="界面语言" data-no-i18n><option value="zh-Hans">简体中文</option><option value="zh-Hant">繁體中文</option><option value="en">English</option></select></nav></header><p id="languageNotice" class="notice language-notice" role="status" aria-live="polite" hidden></p>
+  <header class="topbar"><a class="brand" href="./" aria-label="Record to YouTube 首页"><span class="brand-mark" aria-hidden="true">r<span></span></span><span>Record to <b>YouTube</b></span></a><nav aria-label="主选单"><a href="./about.html">关于</a><span class="connection"><i id="connectionDot"></i><span id="connectionText">正在连线</span></span><select id="languageSelect" class="language-select" aria-label="界面语言" data-no-i18n><option value="zh-Hans">简体中文</option><option value="zh-Hant">繁體中文</option><option value="en">English</option></select></nav></header><p id="languageNotice" class="notice language-notice" role="status" aria-live="polite" hidden></p>
   <main class="workspace">
     <section class="intro"><div><p class="eyebrow">YOUR WORDS, WELL KEPT.</p><h1>把想说的话，<br class="mobile-break">好好留下来。</h1><p class="intro-copy">按下录制，专心表达。余下的剪辑与上传，交给后台。</p></div><div class="intro-note"><span>录制 · 整理 · 发布</span><p>你的声音，你的频道。</p></div></section>
     <div class="studio-grid">
@@ -32,7 +32,7 @@
     </div>
     <section class="jobs-section" aria-labelledby="jobsHeading"><div class="jobs-heading"><div><p class="eyebrow">FROM A THOUGHT TO A VIDEO</p><h2 id="jobsHeading">你的录制</h2></div><button id="refreshJobs" class="button small secondary" type="button">重新整理</button></div><div id="jobsNotice" class="notice" role="status" aria-live="polite" hidden></div><div id="jobsList" class="jobs-list"><div class="empty-state"><span aria-hidden="true">↗</span><div><h3>第一段记录，从现在开始。</h3><p>录制结束后，可以在这里查看制作进度、编辑文案与开启影片。</p></div></div></div></section>
   </main>
-  <footer class="site-footer"><span>Daigui Recorder <span class="footer-dot">·</span> 让表达自然发生。</span><nav aria-label="法律资讯"><a href="./about.html">关于工具</a><a href="./privacy.html">隐私政策</a><a href="./terms.html">使用条款</a></nav><p>本工具使用 YouTube API Services，并非 Google 或 YouTube 的官方产品。</p></footer>
+  <footer class="site-footer"><span>Record to YouTube <span class="footer-dot">·</span> 让表达自然发生。</span><nav aria-label="法律资讯"><a href="./about.html">关于工具</a><a href="./privacy.html">隐私政策</a><a href="./terms.html">使用条款</a></nav><p>本工具使用 YouTube API Services，并非 Google 或 YouTube 的官方产品。</p></footer>
   <div id="recordDock" class="record-dock" hidden><span class="dock-live"><i></i> <span id="dockStatus">录制中</span> <time id="dockTime">00:00</time></span></div>
   <dialog id="confirmDialog" class="confirm-dialog" aria-labelledby="confirmTitle"><form method="dialog"><p class="eyebrow">PLEASE CONFIRM</p><h2 id="confirmTitle"></h2><p id="confirmBody"></p><div class="dialog-actions"><button id="confirmCancel" class="button secondary" value="cancel">取消</button><button id="confirmAccept" class="button" value="confirm">确认</button></div></form></dialog>
 </body>

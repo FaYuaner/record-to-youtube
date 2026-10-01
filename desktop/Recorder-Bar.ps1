@@ -48,13 +48,13 @@ public static class DaiguiRecordingBar {
         readonly Label dot = new Label(), status = new Label(), clock = new Label();
         readonly Button stop = new Button();
         readonly Timer timer = new Timer();
-        readonly Regex recording = new Regex(@"^Daigui Recorder · (录制中|錄製中|Recording) · ([0-9:]+)$");
+        readonly Regex recording = new Regex(@"^Record to YouTube · (录制中|錄製中|Recording) · ([0-9:]+)$");
         string language="录制中", endLabel="结束录制";
         bool stopping; volatile bool invoked, lookupBusy; int requestVersion; DateTime deadline, failureUntil;
         double lastScale;
         public Controller(IntPtr window) {
             owner=window; ownerProcess=ProcessFor(owner);
-            bar.Text="今日录制 · 录制条"; bar.FormBorderStyle=FormBorderStyle.None;
+            bar.Text="今日录制 · Record to YouTube · 录制条"; bar.FormBorderStyle=FormBorderStyle.None;
             bar.ShowInTaskbar=false; bar.TopMost=true; bar.StartPosition=FormStartPosition.Manual;
             bar.AutoScaleMode=AutoScaleMode.None; bar.BackColor=Color.FromArgb(245,245,247);
             bar.Font=new Font("Microsoft YaHei UI",9.5f);
