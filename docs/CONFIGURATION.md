@@ -1,3 +1,29 @@
+# 本机配置
+
+默认本机模式无需远程服务器。先按 README 安装依赖，通过桌面入口启动；Google 尚未连接时也可以录制并保存原片。
+
+复制 `desktop/local.env.example` 为 `desktop/local.env`。该文件只用于当前安装。
+
+| 配置 | 用途 |
+| --- | --- |
+| `GOOGLE_CLIENT_SECRET_FILE` | 自己的 Google **Desktop app** OAuth JSON 绝对路径；连接 YouTube 必填 |
+| `GOOGLE_HTTP_PROXY` | 当前网络需要时，显式填写自己的 Google 代理地址 |
+| `RECORDER_PROCESSING_MODE` | 初始处理方式：`direct`、`external` 或 `builtin` |
+| `RECORDER_PROCESSOR_CONFIG` | 自定义工具的私人 JSON 配置路径 |
+| `OWNER_EMAIL` / `OWNER_CHANNEL_ID` | 可选的预先允许账号与频道；留空则绑定首次授权的唯一所选频道 |
+| `RECORDER_LOCAL_PORT` | 本机端口，默认 18487；仅绑定 127.0.0.1 |
+| `ALLOW_PUBLIC_PUBLISH` | 确认 API 发布资格后，是否允许选择公开上传；默认 false |
+
+Google 控制台步骤：启用 YouTube Data API v3 → 配置 Google Auth Platform 的 Branding / Audience → 测试阶段添加自己的账号 → Clients 创建 **Desktop app** → 下载 JSON。桌面授权使用 HTTP 回环回调和 PKCE，不能直接使用旧 Web 应用 JSON。
+
+录制与上传端点仅接受桌面入口的本机访问凭据和页面会话。OAuth 令牌加密保存在本机数据目录。使用同一安装的首次账号与频道绑定；要管理独立的另一套账号和记录，应使用独立数据目录与浏览器目录。
+
+配置变化后重启服务。使用自己的 Google 测试项目时，刷新令牌可能受测试期限限制；上传到未审核 API 项目的影片也可能被限制为私人。工具按实际平台返回显示结果。
+
+[剪辑工具与 Skill 配置](CUSTOM_EDITING.md)
+
+---
+
 # 首次配置
 
 先准备自己的 HTTPS 服务地址、Google 账号、YouTube 频道和 Google Cloud 项目，再决定是否使用自动文案服务。

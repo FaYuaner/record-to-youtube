@@ -26,3 +26,5 @@ powershell -NoProfile -File tests/desktop_settings_tests.ps1
 离线测试不访问真实 Google/AI 服务。需要实测录制或发布时，使用自己的专用环境与素材；默认检查不会代为发布影片。具体测试范围见 [测试说明](docs/TESTING.md)。
 
 PR 说明应包括具体问题、最终行为、实际验证和相关限制。涉及界面交互时，验证点击后的处理中、成功和失败反馈；涉及授权或数据归属时，验证拒绝错误账号及保持恢复能力。
+
+本机入口为 `server/local_runner.py`，处理器协议为 `server/processing.py`。修改本机授权、自动上传或处理器时，保持直接模式无需媒体 / AI 依赖，并运行本机模式的离线检查。

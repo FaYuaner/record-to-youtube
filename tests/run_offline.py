@@ -12,6 +12,7 @@ SKIP = (
     'test_youtube_processed_success_triggers_cleanup_and_correct_percent',
 )
 GROUPS = (
+    ('tests/local_mode_tests.py', 'LocalTests'),
     ('tests/self_hosted_tests.py', 'SelfHostedTests'),
     ('server/media_tests.py', 'TimelineTests'),
     ('tests/long_connection_tests.py', 'Tests'),
@@ -31,6 +32,7 @@ def main():
             PYTHONDONTWRITEBYTECODE='1',
             RECORDER_DATA_DIR=tempfile.mkdtemp(prefix='recorder-offline-'),
             RECORDER_WORKER_ENABLED='false', PROXY_MANAGED='0',
+            RECORDER_MODE='remote', RECORDER_PROCESSING_MODE='builtin', RECORDER_PROCESSOR_CONFIG='',
             RECORDER_BASE_URL='https://recorder.example.test/recorder',
             OWNER_EMAIL='owner@example.test', OWNER_CHANNEL_ID='UCabcdefghijklmnopqrstuv',
             GOOGLE_HTTP_PROXY='', PROXY_URL='',

@@ -1,0 +1,5 @@
+{
+  "command": ["python", "C:/your-recorder/examples/codex_skill_adapter.py", "{request}"],
+  "skill_path": "C:/your-skills/video-editor/SKILL.md",
+  "timeout_seconds": 3600
+}

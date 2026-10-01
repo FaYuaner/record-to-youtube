@@ -52,6 +52,10 @@ try {
     . (Join-Path $PSScriptRoot 'Recorder-Settings.ps1')
     $recorderSettings = Get-RecorderSettings
     $recorderUrl = $recorderSettings.ServerUrl
+    if ($recorderSettings.Mode -eq 'local') {
+        . (Join-Path $PSScriptRoot 'Local-Service.ps1')
+        $recorderUrl = Start-LocalRecorder -Port $recorderSettings.LocalPort
+    }
     $recorderProfile = $recorderSettings.ProfileDirectory
     $recorderChrome = $recorderSettings.ChromePath
     [void] [IO.Directory]::CreateDirectory($recorderProfile)

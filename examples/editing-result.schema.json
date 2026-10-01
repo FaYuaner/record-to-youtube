@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "final_path": {"type": "string"},
+    "title": {"type": "string"},
+    "description": {"type": "string"},
+    "transcript": {"type": "string"}
+  },
+  "required": ["final_path", "title", "description", "transcript"]
+}

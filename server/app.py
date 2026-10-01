@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 import auth
 import db
+from processing import process_recording, processing_default, processor_available, video_type
 
 PREFIX = urlparse(auth.BASE_URL).path.rstrip('/')
 ORIGIN = '{0.scheme}://{0.netloc}'.format(urlparse(auth.BASE_URL))
@@ -49,7 +50,7 @@ LOG = logging.getLogger('recorder.worker')
 
 
 def worker_enabled():
-    return os.environ.get('RECORDER_WORKER_ENABLED', 'false').lower() == 'true'
+    return os.environ.get('RECORDER_WORKER_ENABLED', 'true' if auth.LOCAL_MODE else 'false').lower() == 'true'
 
 
 def worker_alive():
@@ -139,7 +140,7 @@ def job_dir(job_id):
 def public_job(job):
     fields = ('id', 'state', 'progress', 'message', 'error', 'filename', 'title', 'description', 'privacy', 'auto_publish',
               'received_bytes', 'total_bytes', 'next_chunk', 'created_at', 'updated_at', 'video_id', 'video_url',
-              'transcript', 'stats', 'original_ready', 'final_ready', 'metadata_required', 'duplicate_of', 'actual_privacy', 'publication_locked')
+              'transcript', 'stats', 'original_ready', 'final_ready', 'metadata_required', 'duplicate_of', 'actual_privacy', 'publication_locked', 'processing_mode')
     result = {key: job.get(key) for key in fields}
     result['worker_recovering'] = worker_enabled() and (not worker_alive() or WORKER_ERROR)
     result['youtube_checked_at'] = job.get('_api_fetched_at')
@@ -156,7 +157,10 @@ def require_session(request, authenticated=True):
     if not session:
         raise HTTPException(401, '請重新開啟頁面並連接 YouTube')
     user = session.get('user')
-    if authenticated and (not user or user.get('email') != auth.OWNER_EMAIL or user.get('channel_id') != auth.OWNER_CHANNEL):
+    if authenticated and auth.LOCAL_MODE:
+        if not session.get('local_access'):
+            raise HTTPException(401, '请重新打开本机录制页面')
+    elif authenticated and (not user or user.get('email') != auth.owner_email() or user.get('channel_id') != auth.owner_channel()):
         raise HTTPException(401, '請先連接指定的 YouTube 頻道')
     return sid, session
 
@@ -166,7 +170,7 @@ def own_job(request, job_id):
     job = db.get_job(job_id)
     if not job:
         raise HTTPException(404, '找不到這段錄影')
-    if job.get('owner') != auth.OWNER_EMAIL:
+    if job.get('owner') != auth.job_owner():
         raise HTTPException(403, '沒有存取此錄影的權限')
     return job
 
@@ -203,17 +207,16 @@ def progress_update(job_id, stage, message, progress):
 
 
 def process_media(job):
-    from media_pipeline import process_job
     db.update_job(job['id'], state='processing', error=None, message='正在處理錄影', progress=0)
     output = job_dir(job['id']) / 'processed'
     output.mkdir(exist_ok=True)
-    result = process_job(str(job_dir(job['id']) / 'original.webm'), str(output),
-                         lambda stage, message, progress: progress_update(job['id'], stage, message, progress),
-                         metadata_overrides={'title': job.get('title', ''), 'description': job.get('description', '')})
+    result = process_recording(job, job_dir(job['id']) / 'original.webm', output,
+                              lambda stage, message, progress: progress_update(job['id'], stage, message, progress))
     final = Path(result['final_path']).resolve()
-    if not final.is_relative_to(output.resolve()) or not final.is_file():
+    if (not final.is_relative_to(output.resolve()) and final != (job_dir(job['id']) / 'original.webm').resolve()) or not final.is_file():
         raise ValueError('剪輯服務未產生有效成片')
     pending = bool(result.get('metadata_required'))
+    validate_metadata_fields(result.get('title', ''), result.get('description', ''))
     with db.LOCK:
         current = db.get_job(job['id'])
         current.update(state='ready', progress=1, final_ready=True, _final_path=str(final),
@@ -273,11 +276,14 @@ def upload_video(job):
     if job.get('video_id'):
         db.update_job(job['id'], state='youtube_processing', _next_poll=0)
         return
+    if auth.LOCAL_MODE and job.get('_intended_channel') != auth.owner_channel():
+        raise ValueError('YouTube 频道已变更，请在预览中确认当前频道后重新上传')
     if job['privacy'] == 'public' and not ALLOW_PUBLIC:
         raise ValueError('目前尚未啟用公開發布，請改選私享或不公開')
     if not job.get('title', '').strip():
         raise ValueError('請先填寫影片標題')
     path = Path(job['_final_path'])
+    _, media_type = video_type(path)
     total = path.stat().st_size
     db.update_job(job['id'], state='publishing', message='正在上傳到 YouTube', error=None)
     if apply_upload_command(job['id']):
@@ -305,7 +311,7 @@ def upload_video(job):
                                     'defaultLanguage': 'zh-Hant', 'defaultAudioLanguage': 'zh'},
                         'status': {'privacyStatus': job['privacy'], 'selfDeclaredMadeForKids': False}}
             res = client.post('https://www.googleapis.com/upload/youtube/v3/videos', params={'uploadType': 'resumable', 'part': 'snippet,status'},
-                              headers={**headers, 'X-Upload-Content-Type': 'video/mp4', 'X-Upload-Content-Length': str(total)}, json=metadata)
+                              headers={**headers, 'X-Upload-Content-Type': media_type, 'X-Upload-Content-Length': str(total)}, json=metadata)
             if res.status_code not in (200, 201):
                 raise ValueError(f'YouTube 無法建立上傳工作（{res.status_code}），請核查 API 設定及配額')
             url = res.headers.get('Location', '')
@@ -328,7 +334,7 @@ def upload_video(job):
                     return
                 content = stream.read(CHUNK_BYTES)
                 end = offset + len(content) - 1
-                res = client.put(url, headers={**google_headers(), 'Content-Type': 'video/mp4', 'Content-Length': str(len(content)),
+                res = client.put(url, headers={**google_headers(), 'Content-Type': media_type, 'Content-Length': str(len(content)),
                                                'Content-Range': f'bytes {offset}-{end}/{total}'}, content=content)
                 if res.status_code in (200, 201):
                     accept_video_response(job['id'], res)
@@ -390,7 +396,7 @@ def worker_loop():
                     and duplicate['state'] in ('ready', 'duplicate_waiting')
                     and not duplicate.get('publication_locked')):
                 db.update_job(duplicate['id'], video_id=original['video_id'], video_url=original.get('video_url'),
-                              state='youtube_processing', _next_poll=0, cleanup_after_upload=True)
+                              state='youtube_processing', _next_poll=0, cleanup_after_upload=not auth.LOCAL_MODE)
         with WORKER_LOCK:
             job = next((j for j in reversed(db.list_jobs()) if j['state'] in ('queued', 'publish_queued', 'publishing') or
                         (j['state'] == 'youtube_processing' and j.get('_next_poll', 0) <= time.time()) or
@@ -457,6 +463,12 @@ api = APIRouter(prefix=PREFIX + '/api')
 
 @app.middleware('http')
 async def protection(request, call_next):
+    if auth.LOCAL_MODE:
+        if request.headers.get('host') != urlparse(auth.BASE_URL).netloc:
+            return JSONResponse({'detail': '本机工作台地址不符'}, status_code=403)
+        if (request.headers.get('sec-fetch-site') == 'cross-site' and request.url.path != PREFIX + '/api/oauth/callback') or (
+                request.headers.get('origin') and request.headers['origin'] != ORIGIN):
+            return JSONResponse({'detail': '请从本机工作台操作'}, status_code=403)
     if request.url.path == PREFIX:
         return RedirectResponse(PREFIX + '/', status_code=307)
     private_page = posixpath.normpath(request.url.path) in (PREFIX, PREFIX + '/index.html')
@@ -464,7 +476,7 @@ async def protection(request, call_next):
         try:
             require_session(request)
         except HTTPException:
-            response = FileResponse(Path(__file__).parent / 'static' / 'login.html')
+            response = FileResponse(Path(__file__).parent / 'static' / ('local-login.html' if auth.LOCAL_MODE else 'login.html'))
             response.headers['Cache-Control'] = 'no-store'
             response.headers['X-Frame-Options'] = 'DENY'
             response.headers['Referrer-Policy'] = 'same-origin'
@@ -473,6 +485,10 @@ async def protection(request, call_next):
     if request.url.path.startswith(PREFIX + '/api/') and request.method not in ('GET', 'HEAD', 'OPTIONS'):
         if request.headers.get('origin') != ORIGIN:
             return JSONResponse({'detail': '請從工具本身的頁面操作'}, status_code=403)
+        if auth.LOCAL_MODE and request.url.path == PREFIX + '/api/local/open':
+            if not secrets.compare_digest(request.headers.get('X-Local-Access', ''), auth.local_access_key()):
+                return JSONResponse({'detail': '请从桌面的今日录制入口打开'}, status_code=403)
+            return await call_next(request)
         try:
             _, session = require_session(request, authenticated=False)
         except HTTPException as exc:
@@ -493,7 +509,8 @@ async def protection(request, call_next):
 @api.get('/health')
 def health():
     healthy = not worker_enabled() or (worker_alive() and not WORKER_ERROR and bool(SUPERVISOR_THREAD and SUPERVISOR_THREAD.is_alive()))
-    return JSONResponse({'ok': healthy, 'worker_alive': worker_alive(), 'recovering': WORKER_ERROR}, status_code=200 if healthy else 503)
+    return JSONResponse({'ok': healthy, 'worker_alive': worker_alive(), 'recovering': WORKER_ERROR,
+                         'mode': 'local' if auth.LOCAL_MODE else 'remote', 'application': 'daigui-recorder'}, status_code=200 if healthy else 503)
 
 
 @api.get('/session')
@@ -520,13 +537,29 @@ def session_info(request: Request):
     pending_bytes = sum((max(0, j['total_bytes'] - j.get('received_bytes', 0)) * 4 if j['state'] == 'receiving'
                         else j['total_bytes'] * 2) for j in db.list_jobs() if j['state'] in ('receiving', 'queued', 'processing'))
     available_upload_bytes = max(0, min(MAX_UPLOAD_BYTES, (shutil.disk_usage(db.DATA_DIR).free - MIN_FREE_BYTES - pending_bytes) // 4))
-    response = JSONResponse({'authenticated': bool(session.get('user')), 'csrf_token': session['csrf_token'],
+    response = JSONResponse({'authenticated': bool(session.get('user')) or (auth.LOCAL_MODE and session.get('local_access', False)), 'csrf_token': session['csrf_token'],
                              'user': session.get('user'), 'oauth_configured': auth.configured(),
+                             'youtube_connected': bool(session.get('user')) and bool(auth.load_token()),
+                             'mode': 'local' if auth.LOCAL_MODE else 'remote',
+                             'default_processing_mode': processing_default(), 'external_processor_available': processor_available(),
                              'auth_error': session.get('auth_error') or db.secret_get('authorization_notice'),
                              'limits': {'chunk_bytes': CHUNK_BYTES, 'max_upload_bytes': MAX_UPLOAD_BYTES, 'available_upload_bytes': available_upload_bytes},
-                             'default_privacy': 'private', 'default_auto_publish': False, 'public_enabled': ALLOW_PUBLIC})
+                             'default_privacy': 'private', 'default_auto_publish': auth.LOCAL_MODE, 'public_enabled': ALLOW_PUBLIC})
     response.set_cookie(COOKIE, auth.sign_sid(sid), max_age=auth.SESSION_SECONDS if session.get('user') else 43200,
-                        httponly=True, secure=True, samesite='lax', path=PREFIX + '/')
+                        httponly=True, secure=not auth.LOCAL_MODE, samesite='lax', path=PREFIX + '/')
+    return response
+
+
+@api.post('/local/open')
+def local_open(request: Request):
+    if not auth.LOCAL_MODE:
+        raise HTTPException(404)
+    # Middleware verifies the launch capability, independently of Google authorization.
+    sid = secrets.token_urlsafe(32)
+    db.save_session(sid, {'local_access': True, 'csrf_token': secrets.token_urlsafe(32)})
+    response = JSONResponse({'ok': True})
+    response.set_cookie(COOKIE, auth.sign_sid(sid), max_age=43200, httponly=True, secure=False, samesite='lax', path=PREFIX + '/')
+    response.headers['Cache-Control'] = 'no-store'
     return response
 
 
@@ -536,6 +569,7 @@ class RecorderPreferences(BaseModel):
     auto_publish: bool
     quality: Literal['1080', '720', '480']
     orientation: Literal['auto', 'portrait', 'landscape']
+    processing_mode: Literal['direct', 'builtin', 'external'] | None = None
 
 
 @api.get('/preferences')
@@ -566,6 +600,8 @@ def save_recorder_preferences(request: Request, payload: RecorderPreferences):
 @api.post('/oauth/start')
 def oauth_start(request: Request):
     sid, session = require_session(request, authenticated=False)
+    if auth.LOCAL_MODE and not session.get('local_access'):
+        raise HTTPException(403, '请从桌面的今日录制入口打开')
     try:
         url = auth.begin(session)
     except Exception as exc:
@@ -589,7 +625,7 @@ def oauth_callback(request: Request, code: str = '', state: str = '', error: str
         db.save_session(new_sid, session)
         db.delete_session(sid)
         response = RedirectResponse(PREFIX + '/?auth=connected', status_code=303)
-        response.set_cookie(COOKIE, auth.sign_sid(new_sid), max_age=auth.SESSION_SECONDS, httponly=True, secure=True, samesite='lax', path=PREFIX + '/')
+        response.set_cookie(COOKIE, auth.sign_sid(new_sid), max_age=auth.SESSION_SECONDS, httponly=True, secure=not auth.LOCAL_MODE, samesite='lax', path=PREFIX + '/')
         return response
     except Exception as exc:
         session.pop('oauth', None)
@@ -619,7 +655,8 @@ def disconnect(request: Request):
     finally:
         PUBLISH_LOCK.release()
     response = JSONResponse({'ok': True, 'message': '已撤銷 Google 授權，清除令牌、頻道資料和本工具的 YouTube 上傳記錄；你的錄影、轉錄與 YouTube 影片仍保留'})
-    response.delete_cookie(COOKIE, path=PREFIX + '/')
+    if not auth.LOCAL_MODE:
+        response.delete_cookie(COOKIE, path=PREFIX + '/')
     return response
 
 
@@ -633,6 +670,7 @@ class CreateJob(BaseModel):
     privacy: Literal['public', 'private', 'unlisted'] = 'private'
     auto_publish: bool = False
     retain_original: bool = False
+    processing_mode: Literal['direct', 'builtin', 'external'] | None = None
 
 
 class Metadata(BaseModel):
@@ -649,7 +687,7 @@ class UploadCommand(BaseModel):
 @api.get('/jobs')
 def jobs(request: Request):
     require_session(request)
-    return {'jobs': [public_job(j) for j in db.list_jobs() if j.get('owner') == auth.OWNER_EMAIL and not j.get('duplicate_of')]}
+    return {'jobs': [public_job(j) for j in db.list_jobs() if j.get('owner') == auth.job_owner() and not j.get('duplicate_of')]}
 
 
 @api.post('/jobs')
@@ -675,10 +713,12 @@ def create_job(request: Request, payload: CreateJob):
             raise HTTPException(507, '伺服器空間不足；錄影仍保存在你的電腦，請聯絡管理者釋放空間')
         jid = str(uuid.uuid4())
         job_dir(jid).mkdir(mode=0o700)
-        job = dict(id=jid, client_id=str(payload.client_id), owner=auth.OWNER_EMAIL, filename=Path(payload.filename.replace('\\', '/')).name,
+        job = dict(id=jid, client_id=str(payload.client_id), owner=auth.job_owner(), filename=Path(payload.filename.replace('\\', '/')).name,
                    total_bytes=payload.total_bytes, sha256=payload.sha256.lower() if payload.sha256 else None,
                    title=payload.title, description=payload.description, privacy=payload.privacy, auto_publish=payload.auto_publish,
-                   cleanup_after_upload=True, retain_original=payload.retain_original,
+                   cleanup_after_upload=not auth.LOCAL_MODE, retain_original=payload.retain_original or auth.LOCAL_MODE,
+                   processing_mode=payload.processing_mode or processing_default(),
+                   _intended_channel=auth.owner_channel() if auth.LOCAL_MODE else None,
                    state='receiving', progress=0, message='等待錄影上傳', error=None, received_bytes=0, next_chunk=0,
                    created_at=time.time(), original_ready=False, final_ready=False, transcript='', stats={}, metadata_required=False)
         db.save_job(job)
@@ -777,15 +817,7 @@ def media(request: Request, job_id: str, kind: Literal['original', 'final'] = 'f
     path = job_dir(job_id) / 'original.webm' if kind == 'original' else Path(job.get('_final_path') or job_dir(job_id) / '__missing__')
     if not path.resolve().is_relative_to(job_dir(job_id).resolve()) or not path.is_file():
         raise HTTPException(404, '伺服器影片已清理，請在 YouTube 觀看或使用電腦上的原片' if job.get('cleanup_state') == 'complete' else '影片尚未準備好')
-    extension, media_type = '.mp4', 'video/mp4'
-    if kind == 'original':
-        with path.open('rb') as source:
-            header = source.read(16)
-        if header[4:8] == b'ftyp':
-            if header[8:12] == b'qt  ':
-                extension, media_type = '.mov', 'video/quicktime'
-        else:
-            extension, media_type = '.webm', 'video/webm'
+    extension, media_type = video_type(path)
     return FileResponse(path, media_type=media_type,
                         filename=f'daigui-{job_id[:8]}-{kind}' + extension,
                         content_disposition_type='attachment' if download else 'inline')
@@ -803,7 +835,7 @@ def metadata(request: Request, job_id: str, payload: Metadata):
         check_privacy(fields['privacy'])
     validate_metadata_fields(fields.get('title', job.get('title', '')), fields.get('description', job.get('description', '')))
     combined = {**job, **fields}
-    if combined.get('title', '').strip() and combined.get('description', '').strip():
+    if combined.get('title', '').strip() and (combined.get('description', '').strip() or job.get('processing_mode', 'builtin') != 'builtin'):
         fields['metadata_required'] = False
         fields['error'] = None
         if job.get('final_ready'):
@@ -831,7 +863,10 @@ def publish(request: Request, job_id: str):
         raise HTTPException(409, '請等成片製作完成後再發布')
     check_privacy(job['privacy'])
     check_metadata(job)
-    job = db.update_job(job_id, state='publish_queued', message='已排入 YouTube 上傳佇列', error=None, progress=0)
+    if auth.LOCAL_MODE and not auth.load_token():
+        raise HTTPException(409, '请先连接自己的 YouTube 频道')
+    job = db.update_job(job_id, _intended_channel=auth.owner_channel() if auth.LOCAL_MODE else None,
+                        state='publish_queued', message='已排入 YouTube 上傳佇列', error=None, progress=0)
     WAKE.set()
     return public_job(job)
 

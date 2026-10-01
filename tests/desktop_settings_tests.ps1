@@ -13,12 +13,12 @@ function Assert-ConfigurationRejected([string] $Path) {
     if (-not $rejected) { throw 'Invalid or missing server configuration was accepted.' }
 }
 
-Assert-ConfigurationRejected (Join-Path $taskTestRoot 'missing.json')
-@{ serverUrl = ''; chromePath = $taskChromePath; profileDirectory = '' } |
+# Local mode needs no server URL or private configuration.
+@{ mode = 'remote'; serverUrl = ''; chromePath = $taskChromePath; profileDirectory = '' } |
     ConvertTo-Json | Set-Content -LiteralPath $taskConfigPath -Encoding UTF8
 Assert-ConfigurationRejected $taskConfigPath
 
-@{ serverUrl = 'http://recorder.example.test/recorder'; chromePath = $taskChromePath; profileDirectory = '' } |
+@{ mode = 'remote'; serverUrl = 'http://recorder.example.test/recorder'; chromePath = $taskChromePath; profileDirectory = '' } |
     ConvertTo-Json | Set-Content -LiteralPath $taskConfigPath -Encoding UTF8
 Assert-ConfigurationRejected $taskConfigPath
 
@@ -28,4 +28,8 @@ $taskResolved = Get-RecorderSettings -ConfigPath $taskConfigPath
 if ($taskResolved.ServerUrl -ne 'https://my-recorder.example.test/recorder/') { throw 'Wrong server URL.' }
 if ($taskResolved.ChromePath -ne $taskChromePath) { throw 'Wrong Chrome path.' }
 if ($taskResolved.ProfileDirectory -ne (Join-Path $env:LOCALAPPDATA 'DaiguiRecorder\ChromeProfile')) { throw 'Wrong per-user browser directory.' }
-Write-Output 'Desktop settings: 4 checks passed; no browser launched.'
+@{ mode = 'local'; serverUrl = ''; chromePath = $taskChromePath; profileDirectory = '' } |
+    ConvertTo-Json | Set-Content -LiteralPath $taskConfigPath -Encoding UTF8
+$taskLocal = Get-RecorderSettings -ConfigPath $taskConfigPath
+if ($taskLocal.Mode -ne 'local' -or $taskLocal.ServerUrl -ne 'http://127.0.0.1:18487/recorder/') { throw 'Local recording requires a server.' }
+Write-Output 'Desktop settings: remote validation, backward compatibility and server-free local configuration passed.'

@@ -18,6 +18,7 @@ import db
 from network import network_access
 
 BASE_URL = os.environ.get('RECORDER_BASE_URL', 'http://127.0.0.1:18487/recorder').strip().rstrip('/')
+LOCAL_MODE = os.environ.get('RECORDER_MODE', 'remote').lower() == 'local'
 CALLBACK = BASE_URL + '/api/oauth/callback'
 OWNER_EMAIL = os.environ.get('OWNER_EMAIL', '').strip().lower()
 OWNER_CHANNEL = os.environ.get('OWNER_CHANNEL_ID', '').strip()
@@ -30,6 +31,13 @@ _signer = None
 
 
 def validate_settings():
+    if LOCAL_MODE:
+        parsed = urlparse(BASE_URL)
+        if (parsed.scheme != 'http' or parsed.hostname != '127.0.0.1' or not parsed.port
+                or parsed.username or parsed.password or parsed.query or parsed.fragment
+                or parsed.path != '/recorder'):
+            raise RuntimeError('本机模式只能使用 http://127.0.0.1:<端口>/recorder')
+        return
     missing = []
     if not os.environ.get('RECORDER_BASE_URL', '').strip():
         missing.append('RECORDER_BASE_URL')
@@ -46,6 +54,30 @@ def validate_settings():
         raise RuntimeError('RECORDER_BASE_URL 必须是包含服务路径的 HTTPS 地址，不能包含账号、查询参数或片段')
     if '@' not in OWNER_EMAIL or any(c.isspace() for c in OWNER_EMAIL) or OWNER_EMAIL == '*':
         raise RuntimeError('OWNER_EMAIL 必须是允许登录的完整 Google 账号邮箱')
+
+
+def local_identity():
+    value = db.secret_get('local_google_identity') if LOCAL_MODE else None
+    return json.loads(decrypt(value)) if value else {}
+
+
+def owner_email():
+    return OWNER_EMAIL or (local_identity().get('email', '') if LOCAL_MODE else '')
+
+
+def owner_channel():
+    return OWNER_CHANNEL or (local_identity().get('channel_id', '') if LOCAL_MODE else '')
+
+
+def job_owner():
+    # Local files belong to the device vault, including recordings made offline.
+    return '__local_device__' if LOCAL_MODE else OWNER_EMAIL
+
+
+def local_access_key():
+    if not LOCAL_MODE:
+        raise RuntimeError('本机访问仅在桌面模式可用')
+    return key_file('local-access.key', lambda: secrets.token_urlsafe(48).encode()).decode()
 
 
 def key_file(name, create):
@@ -97,8 +129,12 @@ def client_config():
         if os.name != 'nt' and p.stat().st_mode & 0o077:
             raise RuntimeError('OAuth credential file permissions must be 0600')
         raw = json.loads(p.read_text(encoding='utf-8-sig'))
-        conf = raw.get('web', raw)
+        if LOCAL_MODE and 'installed' not in raw:
+            raise RuntimeError('本机上传需要 Google 桌面应用 OAuth JSON；请在本机配置 GOOGLE_CLIENT_SECRET_FILE')
+        conf = raw.get('installed' if LOCAL_MODE else 'web', raw)
     else:
+        if LOCAL_MODE:
+            raise RuntimeError('连接 YouTube 前，请在 desktop/local.env 的 GOOGLE_CLIENT_SECRET_FILE 配置自己的桌面应用 OAuth JSON')
         conf = {'client_id': os.environ.get('GOOGLE_CLIENT_ID'), 'client_secret': os.environ.get('GOOGLE_CLIENT_SECRET')}
     if not conf.get('client_id') or not conf.get('client_secret'):
         raise RuntimeError('尚未設定 Google 授權憑證')
@@ -134,7 +170,7 @@ def begin(session):
         'client_id': conf['client_id'], 'redirect_uri': CALLBACK, 'response_type': 'code',
         'scope': SCOPES, 'state': state, 'nonce': nonce, 'code_challenge': challenge,
         'code_challenge_method': 'S256', 'access_type': 'offline', 'prompt': 'consent',
-        'login_hint': OWNER_EMAIL, 'include_granted_scopes': 'false',
+        'login_hint': owner_email(), 'include_granted_scopes': 'false',
     })
 
 
@@ -164,13 +200,16 @@ def finish(code, state, session):
                             issuer=['https://accounts.google.com', 'accounts.google.com'], options={'require': ['exp', 'iat', 'sub', 'aud', 'iss']})
         if not secrets.compare_digest(claims.get('nonce', ''), pending['nonce']):
             raise ValueError('Google 登入驗證不符')
-        if claims.get('email', '').lower() != OWNER_EMAIL or claims.get('email_verified') is not True:
+        email = claims.get('email', '').lower()
+        if not email or claims.get('email_verified') is not True or (owner_email() and email != owner_email()):
             raise ValueError('此工具僅供指定的頻道擁有人使用')
         res = client.get('https://www.googleapis.com/youtube/v3/channels', params={'part': 'snippet', 'mine': 'true'},
                          headers={'Authorization': 'Bearer ' + token['access_token']})
         if res.status_code != 200:
             raise ValueError('未能取得 YouTube 頻道，請同意頻道讀取和上傳權限')
-        channel = next((item for item in res.json().get('items', []) if item['id'] == OWNER_CHANNEL), None)
+        channels = res.json().get('items', [])
+        channel = (next((item for item in channels if item['id'] == owner_channel()), None)
+                   if owner_channel() else channels[0] if LOCAL_MODE and len(channels) == 1 else None)
         if not channel:
             raise ValueError('授權頻道不符，請選擇已設定的 YouTube 頻道重新連接')
     previous = load_token()
@@ -181,10 +220,15 @@ def finish(code, state, session):
     token['expires_at'] = time.time() + int(token.get('expires_in', 3600))
     token['_confirmed_at'] = time.time()
     token.pop('id_token', None)
-    user = {'email': OWNER_EMAIL, 'channel_id': OWNER_CHANNEL, 'channel_title': channel.get('snippet', {}).get('title', 'YouTube')}
+    user = {'email': email, 'channel_id': channel['id'], 'channel_title': channel.get('snippet', {}).get('title', 'YouTube')}
     # Identity display belongs to the expiring session, not the long-lived token vault.
     token.pop('user', None)
     with TOKEN_LOCK:
+        if LOCAL_MODE:
+            enrolled = local_identity()
+            if enrolled and (enrolled.get('email') != user['email'] or enrolled.get('channel_id') != user['channel_id']):
+                raise ValueError('此安装已连接另一个账号或频道，请使用独立的数据目录')
+            db.secret_put('local_google_identity', encrypt(json.dumps(user)))
         db.secret_put('google_token', encrypt(json.dumps(token)))
         db.secret_delete('authorization_notice')
     session['user'] = user
@@ -231,17 +275,17 @@ def access_token():
 def refresh_identity(session):
     """Refresh an already authenticated browser's channel; never signs in a new visitor."""
     user = session.get('user')
-    if not user or user.get('email') != OWNER_EMAIL or user.get('channel_id') != OWNER_CHANNEL:
+    if not user or user.get('email') != owner_email() or user.get('channel_id') != owner_channel():
         raise ValueError('請先連接指定的 YouTube 頻道')
     headers = {'Authorization': 'Bearer ' + access_token()}
     with google_client() as client:
         response = client.get('https://www.googleapis.com/youtube/v3/channels',
                               params={'part': 'snippet', 'mine': 'true'}, headers=headers)
     response.raise_for_status()
-    channel = next((item for item in response.json().get('items', []) if item.get('id') == OWNER_CHANNEL), None)
+    channel = next((item for item in response.json().get('items', []) if item.get('id') == owner_channel()), None)
     if not channel:
         raise ValueError('目前授權無法存取指定頻道，請重新連接')
-    session['user'] = {'email': OWNER_EMAIL, 'channel_id': OWNER_CHANNEL,
+    session['user'] = {'email': owner_email(), 'channel_id': owner_channel(),
                         'channel_title': channel.get('snippet', {}).get('title', 'YouTube')}
     session['identity_fetched_at'] = time.time()
 
@@ -270,7 +314,7 @@ def maintain_authorization(now=None):
         if not token or token.get('_identity_checked_at', 0) > current - 86400 or token.get('_maintenance_retry_at', 0) > current:
             return False
         try:
-            session = {'user': {'email': OWNER_EMAIL, 'channel_id': OWNER_CHANNEL}}
+            session = {'user': {'email': owner_email(), 'channel_id': owner_channel()}}
             refresh_identity(session)
             latest = load_token()
             if not latest:

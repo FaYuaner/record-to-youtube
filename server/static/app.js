@@ -2,8 +2,22 @@
 
 (() => {
   const API = './api';
+  if (new URLSearchParams(location.hash.slice(1)).has('access')) history.replaceState({}, '', location.pathname + location.search);
   const locale = window.RecorderI18n || { locale: 'zh-Hant', t: (value, ...args) => value.replace(/\{(\d+)\}/g, (match, index) => args[index] ?? match) };
-  const t = locale.t;
+  const localMessages = {
+    '伺服器上傳':'保存到本机队列',
+    '伺服器影片已清理，YouTube 影片與文字記錄仍保留。':'本机副本已清理，YouTube 影片与文字记录仍保留。',
+    '原片已保留在此裝置，等待傳送至伺服器。':'原片已保留在此设备，等待保存到本机队列。',
+    '這段只保留在此设备，未上傳伺服器。':'原片已留在此设备。',
+    '原片已保留在本機，請選擇是否上傳伺服器。':'原片已保留在本机，可以准备上传。',
+    '這段尚未確認上傳。請在錄製列表選擇是否上傳伺服器。':'请在录制列表选择要准备的视频。',
+    '成片完成後，自動以「{0}」上傳到你的 YouTube 頻道。':'原片或剪辑成片准备完成后，自动以「{0}」上传 YouTube。',
+    '先製作成片，再由你確認上傳。':'视频准备完成后，由你确认上传。',
+    '嘗試啟動剪輯':'继续准备视频',
+    '重新產生文案':'重试准备视频',
+    '正在暫停上傳…':'正在暂停传送…'
+  };
+  const t = (value, ...args) => locale.t(state.session?.mode === 'local' && localMessages[value] ? localMessages[value] : value, ...args);
   const $ = (id) => document.getElementById(id);
   const pageTitle = document.title;
   const state = { session: null, stream: null, recorder: null, recording: false, starting: false, stopping: false, chunks: [], startedAt: 0, folder: null, writer: null, writeChain: Promise.resolve(), writeError: null, timer: null, audio: null, analyser: null, animation: null, pending: new Map(), uploading: new Set(), uploadControls: new Map(), decidingUpload: new Set(), jobs: [], editing: new Set(), drafts: new Map(), recordingPreferences: null, lastPending: null, busyAccount: false, poll: null, devicesBusy: false, deviceListVersion: 0, transfers: new Map() };
@@ -22,11 +36,13 @@
   let previewPromise = null, previewBusy = false, streamDevices = '';
   let confirmationQueue = Promise.resolve();
   let preferences = { privacy: 'private', auto_publish: false };
+  let preferencesRestored = false, processingMode = 'direct';
+  const localMode = () => state.session?.mode === 'local';
   let devicePreferences = { camera: '', microphone: '' };
   let preferredFacing = 'user', exactFacing = false, switchingCamera = false;
   try { if (localStorage.getItem('daigui.cameraFacing') === 'environment') { preferredFacing = 'environment'; exactFacing = true; } } catch (_) {}
   try { const stored = JSON.parse(localStorage.getItem('daigui.devices') || '{}'); for (const kind of ['camera', 'microphone']) if (typeof stored[kind] === 'string') devicePreferences[kind] = stored[kind]; } catch (_) {}
-  try { const stored = JSON.parse(localStorage.getItem('daigui.preferences') || 'null'); if (stored && Object.hasOwn(privacyNames, stored.privacy)) preferences = { privacy: stored.privacy, auto_publish: stored.version >= 2 && stored.auto_publish === true }; } catch (_) {}
+  try { const stored = JSON.parse(localStorage.getItem('daigui.preferences') || 'null'); if (stored && Object.hasOwn(privacyNames, stored.privacy)) { preferences = { privacy: stored.privacy, auto_publish: stored.version >= 2 && stored.auto_publish === true }; preferencesRestored = true; } } catch (_) {}
 
   const noticeTimers = new Map();
   function notify(id, message, type = '', duration = 0) { clearTimeout(noticeTimers.get(id)); noticeTimers.delete(id); const el = $(id); el.textContent = message; el.className = 'notice' + (type ? ' ' + type : ''); el.hidden = !message; if (message && duration > 0 && type !== 'error') noticeTimers.set(id, setTimeout(() => { el.hidden = true; el.textContent = ''; noticeTimers.delete(id); }, duration)); }
@@ -79,6 +95,20 @@
     if (uploadApproved(item)) { uploadPending(item); return; }
     state.decidingUpload.add(item.client_id);
     try {
+      if (localMode()) {
+        if (!state.session.youtube_connected) {
+          item.upload_decision = 'local_only'; await savePending(item); renderJobs();
+          notify('recordNotice', t('原片已保留在此设备。连接自己的 YouTube 频道后，可在列表上传。'), 'success');
+          return;
+        }
+        const accepted = item.auto_publish || await confirmation(t('准备这段录制？'),
+          t('视频会交给本机上传队列，按本次处理方式准备。自动上传关闭时，完成后可预览并手动上传。'), t('准备视频'), t('只留原片'));
+        item.upload_decision = accepted ? 'approved' : 'local_only'; item.error = null;
+        await savePending(item); renderJobs();
+        if (accepted) { notify('recordNotice', t('正在将原片保存到本机队列…'), 'busy'); await uploadPending(item); }
+        else notify('recordNotice', t('原片已留在此设备。'), 'success');
+        return;
+      }
       const next = item.auto_publish ? t('伺服器會剪輯、整理文案，並按這段錄製的設定上傳 YouTube。') : t('伺服器會剪輯、整理文案，成片完成後再由你決定是否上傳 YouTube。');
       const accepted = await confirmation(t('是否上傳這段錄製到伺服器？'), t('「') + item.filename + '」\n\n' + next + (item.auto_publish ? '\n' + t('可見範圍') + '：' + privacyNames[item.privacy] : '') + t('\n\n選「否」會只保留本機原片，這段不會自動上傳。'), t('是，上傳伺服器'), t('否，留在此设备'));
       item.upload_decision = accepted ? 'approved' : 'local_only'; item.error = null;
@@ -102,6 +132,13 @@
     if (focused) button.focus({ preventScroll: true });
   }
   function updatePrefs() { $('defaultPrivacy').value = preferences.privacy; $('autoPublish').checked = preferences.auto_publish; $('preferencesSummary').textContent = preferences.auto_publish ? t('成片完成後，自動以「{0}」上傳到你的 YouTube 頻道。', privacyNames[preferences.privacy]) : t('先製作成片，再由你確認上傳。'); try { localStorage.setItem('daigui.preferences', JSON.stringify({ ...preferences, version: 3 })); } catch (_) {} }
+  function applyProcessingCopy() {
+    const builtIn = processingMode === 'builtin';
+    $('recordTopic').placeholder = builtIn ? t('留空時，根據口播內容提煉標題') : t('留空时使用录制文件名');
+    $('recordDescription').placeholder = builtIn ? t('留空時，根據口播內容整理簡介') : t('选填，直接使用你填写的内容');
+    $('metadataHelp').textContent = builtIn ? t('填寫的內容直接使用，留空的欄位才會自動生成。設定套用於下一次錄製。') : t('直接上传使用原片和你的文案；自定义剪辑可返回成片与文案。');
+    $('languageNote').hidden = !builtIn;
+  }
   async function prefsChanged() {
     const next = { privacy: $('defaultPrivacy').value, auto_publish: $('autoPublish').checked };
     if (next.privacy === 'public' && !state.session?.public_enabled) { updatePrefs(); notify('preferencesNotice', t('公開發布尚未啟用。你可以先製作成片，或選擇私人、不公開上傳。'), 'error'); return; }
@@ -109,10 +146,10 @@
       const ok = await confirmation(t('啟用自動公開發布？'), t('之後的新錄製在剪輯與文案完成後，會自動公開發布到目前連結的 YouTube 頻道。所有人都可能觀看影片。\n\n你可以隨時關閉這項設定；已開始處理的錄製會沿用開始錄製時的設定。'), t('啟用自動公開發布'));
       if (!ok) { updatePrefs(); notify('preferencesNotice', t('已取消，原設定保持不變。')); return; }
     }
-    preferences = next; updatePrefs(); notify('preferencesNotice', t('已修改。点击「保存到账号」，即可在其他设备使用这些设置。'));
+    preferences = next; updatePrefs(); notify('preferencesNotice', (localMode() ? t('已修改。点击「保存设置」记住本次选择。') : t('已修改。点击「保存到账号」，即可在其他设备使用这些设置。')));
   }
   function renderAccountDetails() {
-    const connected = !!state.session?.authenticated;
+    const connected = !!state.session?.youtube_connected;
     if (!connected) accountDetailsVisible = false;
     $('accountTitle').textContent = connected ? (accountDetailsVisible ? state.session.user?.channel_title || t('Google 帳戶已連結') : t('頻道已連結')) : t('連結你的頻道');
     $('accountSubtitle').textContent = connected ? (accountDetailsVisible ? state.session.user?.email || t('可上傳到你的 YouTube 頻道') : t('帳號資訊已隱藏')) : t('透過 Google 安全授權');
@@ -123,12 +160,23 @@
   async function loadSession() {
     const previousAccount = JSON.stringify(state.session?.user || null);
     state.session = await api('/session'); updateRecordingBudget();
+    if (!preferencesRestored) { preferences.auto_publish = state.session.default_auto_publish === true; preferencesRestored = true; }
+    if (!state.sessionModeLoaded) { processingMode = state.session.default_processing_mode || 'builtin'; state.sessionModeLoaded = true; }
+    $('processingMode').value = processingMode; updatePrefs();
+    $('externalMode').disabled = !state.session.external_processor_available; applyProcessingCopy();
+    if (localMode()) {
+      $('retentionHelp').textContent = t('原片、成片与上传队列保存在本机。上传期间请保持电脑运行。');
+      $('saveCloudSettings').textContent = t('保存设置');
+
+      $('recordHelp').textContent = t('先保存原片，连接频道后按设置自动上传 YouTube。');
+    }
     if (previousAccount !== JSON.stringify(state.session.user || null)) accountDetailsVisible = false;
-    const connected = state.session.authenticated;
-    if (!connected) { releasePreview(); state.jobs = []; state.pending.clear(); state.drafts.clear(); document.querySelector('.workspace').hidden = true; location.replace('./'); return; }
+    const connected = state.session.youtube_connected;
+    if (!state.session.authenticated) { releasePreview(); state.jobs = []; state.pending.clear(); state.drafts.clear(); document.querySelector('.workspace').hidden = true; location.replace('./'); return; }
     $('connectionText').textContent = connected ? t('頻道已連結') : t('尚未連結頻道'); $('connectionText').parentElement.classList.toggle('connected', connected);
     renderAccountDetails();
     $('connectButton').hidden = connected; $('accountActions').hidden = !connected;
+    $('logoutButton').hidden = localMode();
     $('authPurpose').textContent = connected ? t('影片只會上傳到此處顯示的頻道。你可以隨時登出或解除授權。') : t('用於辨識你的頻道、上傳錄製影片，以及查詢發布結果。授權前可查看下方的隱私政策。');
     $('publicAvailability').hidden = !!state.session.public_enabled;
     if (state.session.auth_error) notify('authNotice', t(state.session.auth_error), 'error'); else if (connected && $('authNotice').classList.contains('error')) notify('authNotice', '');
@@ -390,7 +438,7 @@
     if (importing || !validateRecordingFields()) return;
     state.starting = true; lockRecordingFields(true); setRecordButton(t('正在開始錄製…'), true); notify('recordNotice', t('正在準備錄製…'), 'busy');
     $('dockStatus').textContent = t('正在準備錄製…'); $('dockTime').textContent = '00:00';
-    state.writer = null; state.writeError = null; state.writeChain = Promise.resolve(); state.chunks = []; state.recordedBytes = 0; state.currentFile = fileName(); state.recordingPreferences = { ...preferences, title: $('recordTopic').value, description: $('recordDescription').value };
+    state.writer = null; state.writeError = null; state.writeChain = Promise.resolve(); state.chunks = []; state.recordedBytes = 0; state.currentFile = fileName(); state.recordingPreferences = { ...preferences, processing_mode:processingMode, title: $('recordTopic').value, description: $('recordDescription').value };
     try {
       const mimeType = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm'].find((type) => MediaRecorder.isTypeSupported(type));
       if (!mimeType) throw new Error(t('无法直接录制此视频格式。请用 Safari，或选择相册中已录好的视频。'));
@@ -436,12 +484,12 @@
     try { await state.writeChain; if (state.writer && !state.writeError) { await state.writer.close(); saved = true; } else if (state.writer) { try { await state.writer.abort(); } catch (_) {} } } catch (error) { state.writeError = error; }
     state.writer = null;
     if (!blob.size) { state.stopping = false; lockRecordingFields(false); setRecordButton(t('開始錄製'), false); notify('recordNotice', t('這次沒有取得可保存的影音內容，請檢查裝置後重新錄製。'), 'error'); return; }
-    const item = { client_id: captureId || crypto.randomUUID(), filename: state.currentFile, total_bytes: blob.size, blob, created_at: new Date().toISOString(), title: recordingPrefs.title, description: recordingPrefs.description, privacy: recordingPrefs.privacy, auto_publish: recordingPrefs.auto_publish, retain_original:isMobile, job_id: null, upload_decision: 'pending' };
+    const item = { client_id: captureId || crypto.randomUUID(), filename: state.currentFile, total_bytes: blob.size, blob, created_at: new Date().toISOString(), title: recordingPrefs.title, description: recordingPrefs.description, privacy: recordingPrefs.privacy, auto_publish: recordingPrefs.auto_publish, processing_mode:recordingPrefs.processing_mode, retain_original:isMobile || localMode(), job_id: null, upload_decision: 'pending' };
     state.pending.set(item.client_id, item); state.lastPending = item.client_id;
     let recovery = true; try { await savePending(item); await clearCapture(item.client_id); } catch (_) { recovery = false; }
     if (!saved && !isMobile) downloadBlob(blob, item.filename);
-    state.stopping = false; lockRecordingFields(false); setRecordButton(t('開始錄製'), false); $('recordHelp').textContent = t('請選擇是否上傳這段錄製。');
-    notify('recordNotice', (isMobile ? t('原片已保留在此页面，可在录制列表下载。上传完成前请保持页面打开。') : saved ? t('原片已保存到「') + state.folder.name + t('」。') : t('原片下載已開始，請確認瀏覽器的下載結果。')) + t('\n請選擇是否上傳到伺服器。') + (!recovery ? t('\n瀏覽器未能保留恢復副本，請確認下載的原片已保存。') : ''));
+    state.stopping = false; lockRecordingFields(false); setRecordButton(t('開始錄製'), false); $('recordHelp').textContent = localMode() ? t('正在准备这段录制。') : t('請選擇是否上傳這段錄製。');
+    notify('recordNotice', (isMobile ? t('原片已保留在此页面，可在录制列表下载。上传完成前请保持页面打开。') : saved ? t('原片已保存到「') + state.folder.name + t('」。') : t('原片下載已開始，請確認瀏覽器的下載結果。')) + (localMode() ? t(' 视频会按本次设置准备上传。') : t('\n請選擇是否上傳到伺服器。')) + (!recovery ? t('\n瀏覽器未能保留恢復副本，請確認下載的原片已保存。') : ''));
     $('localRetryActions').hidden = true; renderJobs(); chooseUpload(item);
   }
   async function uploadPending(item) {
@@ -454,7 +502,7 @@
     try {
       if (!state.session?.authenticated) throw new Error(t('請重新連結 Google 帳戶後重試上傳。原片仍保留在此设备与浏览器中。'));
       if (item.total_bytes > state.session.limits.max_upload_bytes) throw new Error(t('原片超過目前單支影片上限（') + bytes(state.session.limits.max_upload_bytes) + t('）。原片仍可下載，請縮短錄製後重新製作。'));
-      let job = item.job_id ? await api('/jobs/' + encodeURIComponent(item.job_id), { signal: control.abort.signal }) : await api('/jobs', { method: 'POST', signal: control.abort.signal, json: { client_id: item.client_id, filename: item.filename, total_bytes: item.total_bytes, title: item.title, description: item.description, privacy: item.privacy, auto_publish: item.auto_publish, retain_original:!!item.retain_original } });
+      let job = item.job_id ? await api('/jobs/' + encodeURIComponent(item.job_id), { signal: control.abort.signal }) : await api('/jobs', { method: 'POST', signal: control.abort.signal, json: { client_id: item.client_id, filename: item.filename, total_bytes: item.total_bytes, title: item.title, description: item.description, privacy: item.privacy, auto_publish: item.auto_publish, processing_mode:item.processing_mode || processingMode, retain_original:!!item.retain_original } });
       if (control.intent) throw new DOMException('Upload interrupted', 'AbortError');
       job = job.job || job; item.job_id = job.id; try { await savePending(item); } catch (_) {} updateJob(job);
       if (job.state === 'receiving') {
@@ -465,7 +513,7 @@
         job = await api('/jobs/' + encodeURIComponent(job.id) + '/complete', { method: 'POST', json: {} }); job = job.job || job; updateJob(job);
       }
       state.pending.delete(item.client_id); try { await dbAction('pending', 'readwrite', (store) => store.delete(item.client_id)); } catch (_) {}
-      if (state.lastPending === item.client_id) { const activeRecording = state.recording || state.starting || state.stopping; notify('recordNotice', t('原片已傳送完成，伺服器將繼續製作影片。') + (activeRecording ? t('目前的新錄製仍在進行，請保持視窗開啟。') : state.uploading.size > 1 ? t('其他原片仍在傳送，請保持視窗開啟。') : t('現在可以關閉此視窗。'))); $('localRetryActions').hidden = true; }
+      if (state.lastPending === item.client_id) { const activeRecording = state.recording || state.starting || state.stopping; notify('recordNotice', (localMode() ? t('原片已保存到本机队列，可关闭此页面；上传期间请保持电脑运行。') : t('原片已傳送完成，伺服器將繼續製作影片。')) + (activeRecording ? t('目前的新錄製仍在進行，請保持視窗開啟。') : state.uploading.size > 1 ? t('其他原片仍在傳送，請保持視窗開啟。') : t('現在可以關閉此視窗。'))); $('localRetryActions').hidden = true; }
       await refreshJobs(false);
     } catch (error) {
       if (control.intent) { item.upload_decision = control.intent; item.error = null; }
@@ -647,17 +695,18 @@
     const saved = await api('/preferences'); cloudRevision = saved.revision;
     if (saved.quality) {
       preferences = {privacy:saved.privacy, auto_publish:saved.auto_publish};
-      selectedQuality = saved.quality; orientation = saved.orientation;
+      processingMode = saved.processing_mode || state.session.default_processing_mode || 'builtin'; $('processingMode').value = processingMode;
+      selectedQuality = saved.quality; orientation = saved.orientation; applyProcessingCopy();
       $('qualitySelect').value = selectedQuality; $('orientationSelect').value = orientation; updatePrefs(); updateRecordingBudget();
     }
     return saved;
   }
   async function saveCloudSettings() {
     if (state.recording || state.starting || state.stopping) { notify('cloudNotice', t('请结束录制后再保存设置。')); return; }
-    $('saveCloudSettings').disabled = true; notify('cloudNotice', t('正在保存到账号…'), 'busy');
+    $('saveCloudSettings').disabled = true; notify('cloudNotice', (localMode() ? t('正在保存设置…') : t('正在保存到账号…')), 'busy');
     try {
-      const result = await api('/preferences', {method:'PUT',json:{revision:cloudRevision, ...preferences, quality:selectedQuality, orientation}});
-      cloudRevision = result.revision; notify('cloudNotice', t('设置已保存。手机和电脑下次打开时会使用这些设置。'), 'success'); $('reloadCloudSettings').hidden = true;
+      const result = await api('/preferences', {method:'PUT',json:{revision:cloudRevision, ...preferences, quality:selectedQuality, orientation, processing_mode:processingMode}});
+      cloudRevision = result.revision; notify('cloudNotice', (localMode() ? t('设置已保存，下次打开时继续使用。') : t('设置已保存。手机和电脑下次打开时会使用这些设置。')), 'success'); $('reloadCloudSettings').hidden = true;
     } catch(error) { notify('cloudNotice', messageOf(error), 'error'); $('reloadCloudSettings').hidden = error.status !== 409; }
     finally { $('saveCloudSettings').disabled = false; }
   }
@@ -670,7 +719,7 @@
     if (!validateRecordingFields()) return;
     importing = true; lockRecordingFields(true); releasePreview(); showCaptureState(); notify('importNotice', t('正在准备视频：') + file.name, 'busy');
     try {
-      const item = {client_id:crypto.randomUUID(), filename:file.name, retain_original:true, total_bytes:file.size, blob:file, created_at:new Date().toISOString(), ...preferences, title:$('recordTopic').value, description:$('recordDescription').value, job_id:null, upload_decision:'pending'};
+      const item = {client_id:crypto.randomUUID(), filename:file.name, retain_original:true, total_bytes:file.size, blob:file, created_at:new Date().toISOString(), ...preferences, processing_mode:processingMode, title:$('recordTopic').value, description:$('recordDescription').value, job_id:null, upload_decision:'pending'};
       state.pending.set(item.client_id,item); state.lastPending=item.client_id;
       let recoverable = true; try { await savePending(item); } catch (_) { recoverable = false; }
       notify('importNotice', file.name + ' · ' + bytes(file.size) + (recoverable ? t('，已准备好。') : t('。浏览器空间不足，无法保存恢复副本；请保持页面打开，并保留相册中的原片。')), recoverable ? 'success' : 'error');
@@ -729,11 +778,11 @@
     };
     $('toggleAccountDetails').addEventListener('click', () => { accountDetailsVisible = !accountDetailsVisible; renderAccountDetails(); });
     $('qualitySelect').value = selectedQuality; $('qualitySelect').addEventListener('change', changeQuality); updateRecordingBudget();
-    updatePrefs(); $('recordButton').addEventListener('click', () => state.recording ? stopRecording() : startRecording()); $('chooseFolder').addEventListener('click', chooseFolder); $('connectButton').addEventListener('click', connect); $('reauthorizeButton').addEventListener('click', connect); $('logoutButton').addEventListener('click', () => accountAction(false)); $('disconnectButton').addEventListener('click', () => accountAction(true)); $('preferencesForm').addEventListener('submit', (event) => event.preventDefault()); $('defaultPrivacy').addEventListener('change', prefsChanged); $('autoPublish').addEventListener('change', prefsChanged); $('refreshJobs').addEventListener('click', () => refreshJobs(true)); $('retryLocalSave').addEventListener('click', () => { const item = state.pending.get(state.lastPending); if (!item) { notify('recordNotice', t('這段原片已完成傳送，請在錄製列表中下載原片。')); return; } downloadBlob(item.blob, item.filename); notify('recordNotice', t('原片下載已開始，請查看瀏覽器的下載結果。')); }); $('retryUpload').addEventListener('click', async () => { if (![...state.pending.values()].some(uploadApproved)) { notify('recordNotice', t('沒有已確認上傳的原片需要重試。可在錄製列表選擇要上傳的片段。')); return; } await resumeApprovedUploads(); }); window.addEventListener('beforeunload', (event) => { if (state.recording || state.starting || state.stopping || state.uploading.size) { event.preventDefault(); event.returnValue = ''; } });
+    updatePrefs(); $('recordButton').addEventListener('click', () => state.recording ? stopRecording() : startRecording()); $('chooseFolder').addEventListener('click', chooseFolder); $('connectButton').addEventListener('click', connect); $('reauthorizeButton').addEventListener('click', connect); $('logoutButton').addEventListener('click', () => accountAction(false)); $('disconnectButton').addEventListener('click', () => accountAction(true)); $('preferencesForm').addEventListener('submit', (event) => event.preventDefault()); $('defaultPrivacy').addEventListener('change', prefsChanged); $('autoPublish').addEventListener('change', prefsChanged); $('processingMode').addEventListener('change', () => { processingMode=$('processingMode').value; applyProcessingCopy(); notify('preferencesNotice', t('处理方式已修改，将用于下一次录制。')); }); $('refreshJobs').addEventListener('click', () => refreshJobs(true)); $('retryLocalSave').addEventListener('click', () => { const item = state.pending.get(state.lastPending); if (!item) { notify('recordNotice', t('這段原片已完成傳送，請在錄製列表中下載原片。')); return; } downloadBlob(item.blob, item.filename); notify('recordNotice', t('原片下載已開始，請查看瀏覽器的下載結果。')); }); $('retryUpload').addEventListener('click', async () => { if (![...state.pending.values()].some(uploadApproved)) { notify('recordNotice', t('沒有已確認上傳的原片需要重試。可在錄製列表選擇要上傳的片段。')); return; } await resumeApprovedUploads(); }); window.addEventListener('beforeunload', (event) => { if (state.recording || state.starting || state.stopping || state.uploading.size) { event.preventDefault(); event.returnValue = ''; } });
     $('cameraSelect').addEventListener('change', () => deviceChanged('camera')); $('microphoneSelect').addEventListener('change', () => deviceChanged('microphone')); $('refreshDevices').addEventListener('click', checkDevices); $('enableMeter').addEventListener('click', enableMeter); window.addEventListener('pagehide', releasePreview);
     navigator.mediaDevices?.addEventListener('devicechange', () => refreshDeviceList().catch((error) => notify('deviceNotice', deviceError(error), 'error')));
     await refreshDeviceList().catch((error) => notify('deviceNotice', deviceError(error), 'error'));
-    try { await loadSession(); if (!state.session?.authenticated) return; await loadCloudSettings(); await restoreLocal(); await restoreCaptures(); renderJobs(); if (!isMobile) preparePreview().catch(() => {}); await refreshJobs(); for (const id of languageDraft?.editing || []) { const card = [...$('jobsList').children].find((item) => item.dataset.jobId === id); if (card?.querySelector('.editor-toggle')) openEditor(card, id); } if (state.session.authenticated) resumeApprovedUploads(); const params = new URLSearchParams(location.search); if (params.has('error')) { notify('authNotice', t('Google 授權未完成，請重新連結帳戶。'), 'error'); history.replaceState({}, '', location.pathname); } else if (params.has('connected') || params.has('authorized')) { notify('authNotice', t('Google 帳戶已連結，可以開始錄製。')); history.replaceState({}, '', location.pathname); }
+    try { await loadSession(); if (!state.session?.authenticated) return; await loadCloudSettings(); await restoreLocal(); await restoreCaptures(); renderJobs(); if (!isMobile) preparePreview().catch(() => {}); await refreshJobs(); for (const id of languageDraft?.editing || []) { const card = [...$('jobsList').children].find((item) => item.dataset.jobId === id); if (card?.querySelector('.editor-toggle')) openEditor(card, id); } if (state.session.authenticated) resumeApprovedUploads(); const params = new URLSearchParams(location.search); if (params.has('error') || ['failed','cancelled'].includes(params.get('auth'))) { notify('authNotice', t('Google 授權未完成，請重新連結帳戶。'), 'error'); history.replaceState({}, '', location.pathname); } else if (params.has('connected') || params.has('authorized') || params.get('auth') === 'connected') { notify('authNotice', t('Google 帳戶已連結，可以開始錄製。')); history.replaceState({}, '', location.pathname); }
     } catch (error) { $('connectionText').textContent = t('連線暫時中斷'); notify('authNotice', t('無法連接服務：') + messageOf(error) + t(' 請重新整理頁面後再試。'), 'error'); }
     setInterval(() => { if (state.session?.authenticated && !document.hidden) loadSession().catch(() => {}); }, 6 * 60 * 60 * 1000);
     window.addEventListener('online', async () => { try { await loadSession(); if (state.session.authenticated) resumeApprovedUploads(); } catch (_) { notify('authNotice', t('連接暫時無法恢復，請重新整理或稍後重試。'), 'error'); } });

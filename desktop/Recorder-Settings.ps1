@@ -2,21 +2,30 @@
     param([string] $ConfigPath = (Join-Path $PSScriptRoot 'recorder.config.json'))
 
     if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
-        throw '请先将 recorder.config.example.json 复制为 recorder.config.json，并填写自己的 serverUrl。'
+        $settings = [PSCustomObject] @{ mode = 'local'; serverUrl = ''; chromePath = ''; profileDirectory = '' }
+    } else {
+        try { $settings = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+        catch { throw '录制配置无法读取，请检查 recorder.config.json 的 JSON 格式。' }
     }
-    try {
-        $settings = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    } catch {
-        throw '录制配置无法读取，请检查 recorder.config.json 的 JSON 格式。'
-    }
+    $mode = ([string] $settings.mode).Trim()
+    if (-not $mode) { $mode = if ($settings.serverUrl) { 'remote' } else { 'local' } }
+    if ($mode -notin @('local', 'remote')) { throw 'mode 必须是 local 或 remote。' }
     $serverUrl = ([string] $settings.serverUrl).Trim()
     [Uri] $serverUri = $null
-    if (-not [Uri]::TryCreate($serverUrl, [UriKind]::Absolute, [ref] $serverUri) -or
+    if ($mode -eq 'remote' -and (-not [Uri]::TryCreate($serverUrl, [UriKind]::Absolute, [ref] $serverUri) -or
         $serverUri.Scheme -ne 'https' -or -not $serverUri.Host -or
         $serverUri.UserInfo -or $serverUri.Query -or $serverUri.Fragment -or
-        $serverUri.AbsolutePath -eq '/') {
+        $serverUri.AbsolutePath -eq '/')) {
         throw '请在 serverUrl 填写自己录制工作台的完整 HTTPS 地址和服务路径。'
     }
+    $localPort = 18487
+    $localSettingsPath = Join-Path $PSScriptRoot 'local.env'
+    if (Test-Path -LiteralPath $localSettingsPath -PathType Leaf) {
+        foreach ($line in Get-Content -LiteralPath $localSettingsPath -Encoding UTF8) {
+            if ($line -match '^\s*RECORDER_LOCAL_PORT\s*=\s*["'']?(\d+)["'']?\s*(?:#.*)?$') { $localPort = [int] $Matches[1] }
+        }
+    }
+    if ($localPort -lt 1024 -or $localPort -gt 65535) { throw 'RECORDER_LOCAL_PORT 必须在 1024 到 65535 之间。' }
 
     $chromePath = ([string] $settings.chromePath).Trim()
     if (-not $chromePath) {
@@ -42,7 +51,9 @@
     }
 
     [PSCustomObject] @{
-        ServerUrl = $serverUri.AbsoluteUri.TrimEnd('/') + '/'
+        Mode = $mode
+        LocalPort = $localPort
+        ServerUrl = if ($mode -eq 'remote') { $serverUri.AbsoluteUri.TrimEnd('/') + '/' } else { 'http://127.0.0.1:' + $localPort + '/recorder/' }
         ChromePath = [IO.Path]::GetFullPath($chromePath)
         ProfileDirectory = [IO.Path]::GetFullPath($profileDirectory)
     }

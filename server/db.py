@@ -100,9 +100,19 @@ def delete_session(sid):
         con.execute('DELETE FROM sessions WHERE id=?', (sid,))
 
 
-def invalidate_sessions():
+def invalidate_sessions(keep_local=False):
     with LOCK, connection() as con:
-        con.execute('DELETE FROM sessions')
+        if not keep_local:
+            con.execute('DELETE FROM sessions')
+            return
+        for row in con.execute('SELECT id,data FROM sessions').fetchall():
+            session = json.loads(row['data'])
+            if session.get('local_access'):
+                for key in ('user', 'oauth', 'identity_fetched_at', 'auth_error'):
+                    session.pop(key, None)
+                con.execute('UPDATE sessions SET data=? WHERE id=?', (json.dumps(session), row['id']))
+            else:
+                con.execute('DELETE FROM sessions WHERE id=?', (row['id'],))
 
 
 def delete_expired_sessions(now=None):
@@ -134,10 +144,11 @@ def purge_google_authorization_data():
     """
     with LOCK:
         secret_delete('google_token')
-        invalidate_sessions()
+        secret_delete('local_google_identity')
+        invalidate_sessions(keep_local=os.environ.get('RECORDER_MODE') == 'local')
         for job in list_jobs():
             had_transfer = bool(job.get('video_id') or job.get('_upload_url') or job.get('publication_locked'))
-            for key in ('video_id', 'video_url', 'actual_privacy', '_upload_url', '_upload_bytes', '_upload_total', '_next_poll', '_api_fetched_at'):
+            for key in ('video_id', 'video_url', 'actual_privacy', '_upload_url', '_upload_bytes', '_upload_total', '_next_poll', '_api_fetched_at', '_intended_channel'):
                 job.pop(key, None)
             if had_transfer:
                 job.update(publication_locked=True, state='disconnected', progress=0, error=None,

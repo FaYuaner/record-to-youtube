@@ -39,6 +39,8 @@ application.tar.gz
 *.zip
 *.bundle
 recorder.config.json
+local.env
+processor.config.json
 
 # Tooling
 __pycache__/

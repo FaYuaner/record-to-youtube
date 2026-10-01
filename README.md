@@ -1,74 +1,70 @@
 # Daigui Recorder · 今日录制
 
-自部署的口播录制与 YouTube 视频制作工具：在浏览器录下声音和画面，将原片保存到本机，再由自己的服务器剪辑停顿、转录内容、整理文案，并上传到自己授权的频道。
+在 Windows 电脑上录制视频，保存原片，并自动上传到自己的 YouTube 频道。默认直接上传原片；需要剪辑时，可接入自己的工具或 Codex Skill。云服务器是可选项。
 
-Self-hosted video recording, pause trimming, transcription, and YouTube uploads. [English guide](README.en.md).
+Record locally, upload to your own YouTube channel, and optionally edit with your own tools or Skills. [English guide](README.en.md).
 
-## 能做什么
+## 主要功能
 
-- 录制前预览画面和音量，选择摄像头、麦克风、画质与方向；支持背景分割。
-- 分段保存恢复副本，原片可留在本机，也可经确认后传到服务器；支持断线续传。
-- 缩短较长的无声停顿，保留短停顿和人声边界，生成逐字稿。
-- 保留已填写的标题与简介，仅为空白字段生成忠实于口播的繁体中文文案。
-- 预览成片、修改文案，按选择上传 YouTube，并显示实际处理状态。
-- 支持简体中文、繁体中文与英文界面；Windows 提供桌面入口和录制条。
+- 摄像头和麦克风预览、设备选择、画质与画面方向设置，支持背景分割。
+- 原片先保存在本机，录制中分段保存恢复副本；支持导入视频。
+- 本机上传队列、YouTube 断线续传、暂停、继续，以及实际处理状态。
+- 默认录制结束后自动上传，初始可见范围为私人；可关闭自动上传，先预览再上传。
+- 三种处理方式：直接上传原片、自定义剪辑 / Skill、内置停顿剪辑与转录。
+- 自定义处理失败或超时会停止上传，保留原片；不使用未经完成的剪辑结果。
+- 简体中文、繁体中文、英文界面，Windows 桌面入口与录制条。
 
-适合希望自行管理录制资料、处理流程与频道授权的创作者。每个服务实例对应一个 Google 账号与一个 YouTube 频道；不同创作者分别配置自己的实例。
+适合希望自己管理录制资料、剪辑方法和频道授权的创作者。每台安装使用自己的 Google 凭据、工具和配置。
 
-## 从哪里开始
+## 五分钟开始录制
 
-| 需求 | 入口 |
-| --- | --- |
-| 首次配置服务器、账号与 API | [配置指南](docs/CONFIGURATION.md) |
-| 在 Linux 服务器运行 | [部署指南](docs/DEPLOYMENT.md) |
-| 启动 Windows 桌面入口 | [桌面使用说明](desktop/使用說明.md) |
-| 修改源码与提交贡献 | [开发与贡献](CONTRIBUTING.md) |
-
-### 1. 获取源码并安装基础依赖
-
-建议 Python 3.11 或 3.12。在 Windows PowerShell 中执行：
+需要 Windows、Google Chrome 和 Python 3.11 或 3.12。直接录制不需要 FFmpeg、AI 服务或远程服务器。
 
 ```powershell
-git clone https://github.com/almustafadaigui-creator/daigui-recorder.git
-cd daigui-recorder
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r server/requirements.txt
-Copy-Item .env.example .env
+git clone https://github.com/almustafadaigui-creator/daigui-recorder-local.git
+cd daigui-recorder-local
+powershell -NoProfile -ExecutionPolicy Bypass -File desktop/Install-Local.ps1
 ```
 
-Linux 部署步骤见 [部署指南](docs/DEPLOYMENT.md)。浏览器录制和 Google 登录需要有效 HTTPS 入口。
+双击 `desktop/Start-Recorder.vbs`。桌面入口会启动仅监听本机的工作台。选择摄像头、麦克风和原片保存资料夹，录一段短视频，结束后检查原片。
 
-### 2. 配置自己的服务
+尚未连接 YouTube 时，视频只保留在本机；连接后可从列表准备上传。原片完整保存到本机队列后，可以关闭网页，保持电脑运行即可继续处理和上传。
 
-在 `.env` 填写自己的 `RECORDER_BASE_URL`、`OWNER_EMAIL`、`OWNER_CHANNEL_ID` 和 Google OAuth 凭据。地址需包含服务路径，例如 `https://recorder.example.com/recorder`。配置与取得方法见 [配置指南](docs/CONFIGURATION.md)。
+## 连接自己的 YouTube
 
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn app:app --app-dir server --env-file .env --host 127.0.0.1 --port 18487 --workers 1
-```
+1. 在 [Google Cloud Console](https://console.cloud.google.com/) 新建自己的项目，启用 **YouTube Data API v3**。
+2. 在 **Google Auth Platform** 设置受众和 OAuth 信息；测试阶段将自己的 Google 账号加入测试用户。
+3. 在 **Clients / 客户端** 新建 **Desktop app / 桌面应用**，下载 OAuth JSON，放在自己的私人目录。
+4. 复制 `desktop/local.env.example` 为 `desktop/local.env`，将 `GOOGLE_CLIENT_SECRET_FILE` 设置为该 JSON 的绝对路径。关闭已有本机服务后，重新打开桌面入口。
+5. 点击“连接 Google 账号”，确认自己的频道并完成授权。
 
-用 HTTPS 反向代理转发到此服务。三个必填配置缺失时，服务会指出缺少的字段；Google 登录仅接受该实例配置的账号和频道。
+首次授权绑定当前安装的账号与所选频道。上传设置会明确显示自动上传和可见范围；每次录制沿用开始录制时的选择。YouTube 最终可见范围以平台返回为准。Google OAuth 测试模式和未经审核的 YouTube API 项目存在授权期限、上传私人限制与配额规则。
 
-### 3. 完成第一次录制
+详见 [配置指南](docs/CONFIGURATION.md)。远程服务器的 Web OAuth JSON 与桌面凭据使用不同的授权方式。
 
-打开自己配置的 HTTPS 地址，连接自己的 Google 账号与 YouTube 频道，允许摄像头和麦克风。录一段短口播，结束后选择“留在此设备”，检查原片已保存。
+## 按自己的方法剪辑
 
-要使用服务器制作，先安装 [媒体依赖](docs/DEPLOYMENT.md#网络与媒体依赖)、准备转录模型，填写所需 AI 配置，并设置 `RECORDER_WORKER_ENABLED=true`。然后录制或导入一个短片，确认上传服务器；列表会显示处理进度，完成后可预览成片并检查文案。
+默认选择“直接上传原片”，标题留空时使用录制文件名，简介可以留空。
 
-首次使用默认关闭自动上传 YouTube，可见范围为私人。确认成片后再上传；需要自动上传或公开发布时，在设置中主动启用，并核实自己的 YouTube API 发布资格。后台处理线程也默认关闭，部署就绪后再开启。
+要让自己的 Skill 负责剪辑，先安装并登录自己的 Codex CLI，在私人配置中指定 Skill 和处理命令。项目提供 [Codex Skill 适配器](examples/codex_skill_adapter.py) 和 [FFmpeg 转码示例](examples/ffmpeg_tool.py)。在界面选择“自定义剪辑 / Skill”后，处理工具成功返回并通过成片验证才会上 YouTube。
 
-## Windows 桌面入口
+完整接入说明、输入输出协议与示例见 [自定义剪辑](docs/CUSTOM_EDITING.md)。Skill 文件是处理要求，必须由对应工具执行；使用自己的 AI 工具可能消耗其额度。
 
-安装 Google Chrome。复制 `desktop/recorder.config.example.json` 为 `desktop/recorder.config.json`，填写自己的 `serverUrl`，双击 `desktop/Start-Recorder.vbs`。
+## 可选服务器模式
 
-`chromePath` 留空时检测已安装的 Chrome；`profileDirectory` 留空时创建当前用户的独立浏览器目录。未配置有效 HTTPS 地址时，启动器会显示配置提示。桌面入口使用 Windows PowerShell、WinForms 和 UI Automation；也可直接在浏览器中打开工作台。
+设置 `desktop/recorder.config.json` 的 `mode` 为 `remote` 并填写自己部署的 HTTPS 地址，即可使用远程工作台。云端可继续运行内置停顿剪辑、转录及文案生成，也可选择直接上传或自定义工具。
 
-## 使用条件与边界
+- [服务器部署](docs/DEPLOYMENT.md)
+- [Windows 使用说明](desktop/使用說明.md)
+- [开发与贡献](CONTRIBUTING.md)
 
-- 服务使用单进程、单媒体工作线程；不能让多个进程共享同一数据目录。
-- 录制需要浏览器权限。手机请保持页面在前台；长录制能力受设备内存、浏览器存储与服务器空间影响。
-- AI 文案需要自己配置的模型服务；语音转录使用服务器本地模型。两项文案均已填写时无需生成。
-- OAuth、AI API 与 YouTube 上传受各平台审核、额度和费用规则约束。
-- YouTube 确认处理成功后，服务器可清理临时影音；设置保留原片的任务除外。重要原片请自行备份。
+## 使用条件
+
+- 本机模式的录制与上传资料保存在当前用户的本机目录；不同安装分别配置。不要让多个服务共享数据目录。
+- 页面关闭后队列仍可运行；关闭服务、关机或休眠会暂停工作，重新启动后恢复。
+- 外部剪辑和内置媒体处理需要 FFmpeg / ffprobe；内置转录另需语音模型，文案生成另需自己的 AI 配置。
+- 重要原片请保留独立备份。浏览器恢复副本不能代替原片备份。
+- Google、YouTube、AI 服务的权限、审核、额度和费用由各平台管理。
 
 ## 开发检查
 
@@ -77,8 +73,4 @@ python -B tests/run_offline.py
 powershell -NoProfile -File tests/desktop_settings_tests.ps1
 ```
 
-默认测试使用隔离数据和模拟外部请求。媒体集成检查与测试范围见 [测试说明](docs/TESTING.md)。
-
-## 依赖与许可
-
-MediaPipe 的必要运行文件及 Apache License 2.0 随仓库保留。FFmpeg 和 ASR 模型另行安装，遵循各自许可；详见 [第三方依赖](docs/THIRD_PARTY_NOTICES.md)。
+默认检查使用隔离数据与模拟外部请求；测试范围见 [测试说明](docs/TESTING.md)。MediaPipe 运行资源及 Apache License 2.0 保留在项目中，其他依赖遵守各自许可，见 [第三方依赖](docs/THIRD_PARTY_NOTICES.md)。
