@@ -13,7 +13,7 @@ Chrome/Safari 通过 HTTPS 访问 `/recorder/`，Nginx 转发到本机 FastAPI�
 准备 Python 3.11/3.12、Git、Nginx 和有效 HTTPS 域名。以下为 Linux 示例，先确认目录没有在用的安装：
 
 ```bash
-sudo git clone https://github.com/almustafadaigui-creator/record-to-youtube.git /opt/daigui-recorder
+sudo git clone https://github.com/FaYuaner/record-to-youtube.git /opt/daigui-recorder
 cd /opt/daigui-recorder
 sudo python3 -m venv venv
 sudo venv/bin/python -m pip install -r server/requirements.txt

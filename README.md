@@ -23,7 +23,7 @@ Record locally, upload to your own YouTube channel, and optionally edit with you
 需要 Windows、Google Chrome 和 Python 3.11 或 3.12。直接录制不需要 FFmpeg、AI 服务或远程服务器。
 
 ```powershell
-git clone https://github.com/almustafadaigui-creator/record-to-youtube.git
+git clone https://github.com/FaYuaner/record-to-youtube.git
 cd record-to-youtube
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop/Install-Local.ps1
 ```

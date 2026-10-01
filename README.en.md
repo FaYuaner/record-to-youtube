@@ -11,7 +11,7 @@ Record video on Windows, keep the original locally, and automatically upload to 
 Install Google Chrome and Python 3.11 or 3.12 on Windows.
 
 ```powershell
-git clone https://github.com/almustafadaigui-creator/record-to-youtube.git
+git clone https://github.com/FaYuaner/record-to-youtube.git
 cd record-to-youtube
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop/Install-Local.ps1
 ```
