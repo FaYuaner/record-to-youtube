@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Record to YouTube</title>
+  <rect x="24" y="24" width="464" height="464" rx="96" fill="#204b3e"/>
+  <path d="M286 118 A148 148 0 1 0 387 220" fill="none" stroke="#fffef9" stroke-width="32" stroke-linecap="round"/>
+  <path d="M330 184 410 104 M344 104 H410 V170" fill="none" stroke="#fffef9" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="244" cy="260" r="43" fill="#bb4738"/>
+</svg>

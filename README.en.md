@@ -1,3 +1,5 @@
+<p><img src="server/static/brand/project-icon.svg" alt="Record to YouTube" width="96" height="96"></p>
+
 # Record to YouTube
 
 Record video on Windows, keep the original locally, and automatically upload to your own YouTube channel. Upload original footage directly, or optionally edit it with your own tool or Codex Skill. A remote server is optional.

@@ -1,3 +1,5 @@
+<p><img src="server/static/brand/project-icon.svg" alt="今日录制 · Record to YouTube" width="96" height="96"></p>
+
 # 今日录制 · Record to YouTube
 
 在 Windows 电脑上录制视频，保存原片，并自动上传到自己的 YouTube 频道。默认直接上传原片；需要剪辑时，可接入自己的工具或 Codex Skill。云服务器是可选项。
