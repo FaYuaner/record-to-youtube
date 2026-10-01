@@ -96,6 +96,7 @@ class LocalTests(TestCase):
     def test_desktop_oauth_uses_loopback_and_pkce_and_rejects_web_credential(self):
         credential = db.DATA_DIR / ('oauth-fixture-' + uuid.uuid4().hex + '.json')
         credential.write_text(json.dumps({'installed': {'client_id': 'fixture.apps.googleusercontent.com', 'client_secret': 'fixture-only'}}))
+        credential.chmod(0o600)
         with patch.dict(os.environ, {'GOOGLE_CLIENT_SECRET_FILE': str(credential)}):
             pending = {}
             params = parse_qs(urlparse(auth.begin(pending)).query)
