@@ -16,7 +16,7 @@ Chrome/Safari 通过 HTTPS 访问 `/recorder/`，Nginx 转发到本机 FastAPI�
 sudo git clone https://github.com/FaYuaner/record-to-youtube.git /opt/daigui-recorder
 cd /opt/daigui-recorder
 sudo python3 -m venv venv
-sudo venv/bin/python -m pip install -r server/requirements.txt
+sudo venv/bin/python -m pip install --require-hashes -r server/requirements.lock
 sudo useradd --system --home /var/lib/daigui-recorder --create-home --shell /usr/sbin/nologin daigui-recorder
 sudo install -d -m 0700 -o daigui-recorder -g daigui-recorder /etc/daigui-recorder
 sudo install -m 0600 -o daigui-recorder -g daigui-recorder .env.example /etc/daigui-recorder/recorder.env
@@ -53,7 +53,7 @@ Google 回调 URI 必须与 `${RECORDER_BASE_URL}/api/oauth/callback` 完全一�
 
 Linux 按需代理使用 `PROXY_MANAGED=1`，必须填写自己的 `PROXY_SERVICE_NAME`、`PROXY_URL` 和绝对路径 `PROXY_LOCK_FILE`，并配置受限 sudo 权限与锁文件写入权限。就绪检查使用该代理地址的主机和端口；缺少配置时拒绝启停服务。`DIRECT_API_HOSTS` 可指定需要直连的 API 主机名，默认留空。
 
-媒体处理安装 `server/media_requirements.txt` 和系统包 FFmpeg（包含 ffprobe）。预先准备 faster-whisper 模型后，将 `DAIGUI_WHISPER_MODEL` 填为本地模型目录或缓存中已有的模型名称。默认不自动下载；准备过程的体积、耗时及模型许可按所选模型确定。
+媒体处理使用 `python -m pip install --require-hashes -r server/media-requirements.lock` 安装固定依赖，并安装系统包 FFmpeg（包含 ffprobe）。预先准备 faster-whisper 模型后，将 `DAIGUI_WHISPER_MODEL` 填为本地模型目录或缓存中已有的模型名称。默认不自动下载；准备过程的体积、耗时及模型许可按所选模型确定。
 
 ## 服务启动示例
 

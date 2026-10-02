@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 安装与排障
+    url: https://github.com/FaYuaner/record-to-youtube/blob/main/docs/INSTALLATION.md
+    about: 先查看安装、升级与常见问题
+  - name: 安全报告说明
+    url: https://github.com/FaYuaner/record-to-youtube/security/advisories/new
+    about: 请勿在公开问题中提交漏洞细节或凭据

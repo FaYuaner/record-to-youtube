@@ -1,0 +1,15 @@
+name: 功能建议
+description: 说明希望改进的使用场景
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决的问题
+      description: 在什么场景下，当前流程哪里不方便？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议的行为或已有替代方法

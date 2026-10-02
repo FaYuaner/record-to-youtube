@@ -54,7 +54,7 @@ Google 控制台步骤：启用 YouTube Data API v3 → 配置 Google Auth Platf
 
 ## 转录与自动文案
 
-服务器转录需要 `server/media_requirements.txt`、FFmpeg/ffprobe 和准备好的 faster-whisper 模型。`DAIGUI_WHISPER_MODEL` 可以填写已经准备好的模型名称或绝对路径；默认禁止自动下载。模型应遵循自己的许可和硬件要求。
+服务器转录需要 `server/media-requirements.lock`、FFmpeg/ffprobe 和准备好的 faster-whisper 模型。`DAIGUI_WHISPER_MODEL` 可以填写已经准备好的模型名称或绝对路径；默认禁止自动下载。模型应遵循自己的许可和硬件要求。
 
 `DAIGUI_ASR_LANGUAGE=zh` 用于中文口播；留空可由模型检测语言。自动生成的标题与简介当前采用繁体中文；自行填写的内容原样保留。
 

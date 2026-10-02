@@ -6,6 +6,12 @@
 
 Record locally, upload to your own YouTube channel, and optionally edit with your own tools or Skills. [English guide](README.en.md).
 
+当前为 **0.1.0 公开预览版**。[下载版本](https://github.com/FaYuaner/record-to-youtube/releases) · [更新记录](CHANGELOG.md) · [安装与升级](docs/INSTALLATION.md)
+
+![录制工作台](docs/images/recording.png)
+
+截图使用示例摄像头与示例频道，展示实际录制界面。结束录制后，原片可保存到本机队列；自动上传可以关闭。[查看保存后的录制列表](docs/images/saved-recording.png)。
+
 ## 主要功能
 
 - 摄像头和麦克风预览、设备选择、画质与画面方向设置，支持背景分割。
@@ -18,12 +24,12 @@ Record locally, upload to your own YouTube channel, and optionally edit with you
 
 适合希望自己管理录制资料、剪辑方法和频道授权的创作者。每台安装使用自己的 Google 凭据、工具和配置。
 
-## 五分钟开始录制
+## 快速开始录制
 
 需要 Windows、Google Chrome 和 Python 3.11 或 3.12。直接录制不需要 FFmpeg、AI 服务或远程服务器。
 
 ```powershell
-git clone https://github.com/FaYuaner/record-to-youtube.git
+git clone --branch v0.1.0 https://github.com/FaYuaner/record-to-youtube.git
 cd record-to-youtube
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop/Install-Local.ps1
 ```
@@ -76,6 +82,8 @@ powershell -NoProfile -File tests/desktop_settings_tests.ps1
 ```
 
 默认检查使用隔离数据与模拟外部请求；测试范围见 [测试说明](docs/TESTING.md)。MediaPipe 运行资源及 Apache License 2.0 保留在项目中，其他依赖遵守各自许可，见 [第三方依赖](docs/THIRD_PARTY_NOTICES.md)。
+
+安装使用固定版本与哈希校验，维护方法见 [依赖说明](docs/DEPENDENCIES.md)。问题反馈使用 [报告表单](https://github.com/FaYuaner/record-to-youtube/issues/new/choose)，安全问题请按 [安全报告](SECURITY.md) 处理。
 
 ## 许可证
 

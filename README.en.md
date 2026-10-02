@@ -6,12 +6,18 @@ Record video on Windows, keep the original locally, and automatically upload to 
 
 [中文说明](README.md)
 
+Version **0.1.0** is a public preview. See [releases](https://github.com/FaYuaner/record-to-youtube/releases), [changelog](CHANGELOG.md), [installation and upgrades](docs/INSTALLATION.md), [pinned dependencies](docs/DEPENDENCIES.md), and [security reporting](SECURITY.md).
+
+![Recording workspace](docs/images/recording.png)
+
+The actual interface is shown with a synthetic camera and an example channel. Recording ends with an original saved to the local queue; automatic uploads can be disabled. [View the saved recording](docs/images/saved-recording.png).
+
 ## Quick start
 
 Install Google Chrome and Python 3.11 or 3.12 on Windows.
 
 ```powershell
-git clone https://github.com/FaYuaner/record-to-youtube.git
+git clone --branch v0.1.0 https://github.com/FaYuaner/record-to-youtube.git
 cd record-to-youtube
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop/Install-Local.ps1
 ```

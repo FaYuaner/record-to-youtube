@@ -2,20 +2,36 @@ name: Offline checks
 
 on:
   push:
+    branches: ['**']
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
+  publication:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python tools/test_check_publication.py
+      - run: python tools/check_publication.py --root . --worktree
+      - run: python tools/check_publication.py --root . --history
   server:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - run: python -m pip install -r server/requirements.txt
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --require-hashes -r server/requirements.lock
       - run: python -B tests/run_offline.py
   desktop:
     runs-on: windows-latest
