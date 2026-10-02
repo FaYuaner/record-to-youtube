@@ -46,3 +46,7 @@ powershell -NoProfile -File tests/desktop_settings_tests.ps1
 ```
 
 Offline checks isolate runtime data and simulate external requests. MediaPipe resources retain Apache License 2.0 notices; see [third-party notices](docs/THIRD_PARTY_NOTICES.md). Platform permissions, quotas and provider charges apply to your own accounts.
+
+## License
+
+Original project code and documentation are licensed under the [MIT License](LICENSE). Use, modification, redistribution, and commercial use are permitted with the copyright and permission notices retained. Third-party components remain under their respective licenses; see [third-party notices](docs/THIRD_PARTY_NOTICES.md).

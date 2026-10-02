@@ -76,3 +76,7 @@ powershell -NoProfile -File tests/desktop_settings_tests.ps1
 ```
 
 默认检查使用隔离数据与模拟外部请求；测试范围见 [测试说明](docs/TESTING.md)。MediaPipe 运行资源及 Apache License 2.0 保留在项目中，其他依赖遵守各自许可，见 [第三方依赖](docs/THIRD_PARTY_NOTICES.md)。
+
+## 许可证
+
+本项目原创代码与文档采用 [MIT 许可证](LICENSE)，允许使用、修改、分发和商业使用，须保留版权与许可声明。第三方组件继续遵循各自许可证，详见 [第三方依赖](docs/THIRD_PARTY_NOTICES.md)。

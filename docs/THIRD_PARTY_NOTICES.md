@@ -7,4 +7,6 @@
 - 原许可证：`server/static/vendor/vision/LICENSE`
 - 模型与安装包摘要：`server/static/vendor/vision/provenance.json`
 
-Python 依赖由两份 requirements 描述，各自遵守其许可证。FFmpeg 和 ASR 模型需要另行安装，不随本仓库分发。若将仓库改为公开或发布安装包，应先复核全部再分发条件、模型许可、品牌资源及项目本身的许可安排。
+本项目原创代码与文档采用 [MIT 许可证](../LICENSE)。MediaPipe 等第三方组件继续遵循各自许可证，项目的 MIT 许可证不替代第三方许可。
+
+Python 依赖由两份 requirements 描述，各自遵守其许可证。FFmpeg 和 ASR 模型需要另行安装，不随本仓库分发。制作安装包时，须遵守实际包含的组件与模型的再分发条件。
